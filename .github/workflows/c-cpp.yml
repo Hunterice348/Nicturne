@@ -1,71 +1,25 @@
-name: HUNTERICE VST3 Build (C/C++)
+name: HUNTERICE VST3 Build
 
 on:
   push:
-    branches: [ main, master, develop ]
-  pull_request:
     branches: [ main, master ]
   workflow_dispatch:
 
 env:
   BUILD_TYPE: Release
-  PROJECT_NAME: HUNTERICE_PLUGIN
+  PROJECT_NAME: HUNTERICE_SYNTH
 
 jobs:
   build-windows:
-    name: Build VST3 (Windows x64)
     runs-on: windows-latest
-    
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    
-    - name: Setup CMake
-      uses: lukka/get-cmake@latest
-    
-    - name: Configure CMake (Visual Studio 2022)
-      run: |
-        cmake -B ${{github.workspace}}/build `
-              -G "Visual Studio 17 2022" `
-              -A x64 `
-              -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
-    
-    - name: Build VST3 Plugin
-      run: |
-        cmake --build ${{github.workspace}}/build `
-              --config ${{env.BUILD_TYPE}} `
-              --target ${{env.PROJECT_NAME}}_VST3 `
-              --parallel
-    
-    - name: Verify VST3 file exists
-      shell: pwsh
-      run: |
-        Write-Host "=== Searching for VST3 file ==="
-        Get-ChildItem -Path ${{github.workspace}}/build -Recurse -Filter "*.vst3" | ForEach-Object {
-          Write-Host "Found: $($_.FullName)"
-        }
-        if (-not (Test-Path "${{github.workspace}}/build/${{env.PROJECT_NAME}}_artefacts/${{env.BUILD_TYPE}}/VST3")) {
-          Write-Error "VST3 output folder not found!"
-          exit 1
-        }
-    
-    - name: Upload VST3 Artifact
+    - uses: actions/checkout@v4
+    - name: Configure
+      run: cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+    - name: Build
+      run: cmake --build build --config ${{env.BUILD_TYPE}} --target ${{env.PROJECT_NAME}}_VST3 --parallel
+    - name: Upload
       uses: actions/upload-artifact@v4
       with:
-        name: HUNTERICE-VST3-Windows-x64
-        path: ${{github.workspace}}/build/${{env.PROJECT_NAME}}_artefacts/${{env.BUILD_TYPE}}/VST3/
-        retention-days: 30
-        if-no-files-found: error
-
-  build-info:
-    name: Build Summary
-    runs-on: ubuntu-latest
-    needs: build-windows
-    steps:
-    - name: Show build status
-      run: |
-        echo "✅ Windows VST3 build completed successfully!"
-        echo "📦 Download artifact from: Actions → this run → Artifacts"
-        echo "📁 Install to: C:\Program Files\Common Files\VST3\"
+        name: HUNTERICE-SYNTH-VST3
+        path: build/HUNTERICE_SYNTH_artefacts/${{env.BUILD_TYPE}}/VST3/
