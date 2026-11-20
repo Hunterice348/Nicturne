@@ -9,11 +9,12 @@ HUNTERICE_SYNTHAudioProcessorEditor::HUNTERICE_SYNTHAudioProcessorEditor(HUNTERI
     setResizeLimits(1200, 800, 1920, 1080);
     setSize(1400, 850);
 
+    // ИСПРАВЛЕНИЕ: используем audioProcessor.apvts вместо p.apvts
     auto makeSlider = [this](juce::Slider& s, const juce::String& paramID,
                              std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>& att) {
         s.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
         s.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 70, 16);
-        att = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.apvts, paramID, s);
+        att = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.apvts, paramID, s);
         addAndMakeVisible(s);
     };
 
@@ -21,8 +22,8 @@ HUNTERICE_SYNTHAudioProcessorEditor::HUNTERICE_SYNTHAudioProcessorEditor(HUNTERI
     juce::StringArray waves = {"Sine", "Triangle", "Saw", "Square", "Pulse", "Noise"};
     for (int i = 0; i < 6; ++i) { osc1WaveBox.addItem(waves[i], i + 1); osc2WaveBox.addItem(waves[i], i + 1); }
     osc1WaveBox.setSelectedId(2); osc2WaveBox.setSelectedId(3);
-    osc1WaveAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(p.apvts, "osc1Wave", osc1WaveBox);
-    osc2WaveAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(p.apvts, "osc2Wave", osc2WaveBox);
+    osc1WaveAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(audioProcessor.apvts, "osc1Wave", osc1WaveBox);
+    osc2WaveAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(audioProcessor.apvts, "osc2Wave", osc2WaveBox);
     addAndMakeVisible(osc1WaveBox); addAndMakeVisible(osc2WaveBox);
 
     makeSlider(osc1Detune, "osc1Detune", osc1DetuneAtt);
@@ -45,15 +46,15 @@ HUNTERICE_SYNTHAudioProcessorEditor::HUNTERICE_SYNTHAudioProcessorEditor(HUNTERI
     juce::StringArray fmodes = {"LP", "HP", "BP", "Notch"};
     for (int i = 0; i < 4; ++i) filterModeBox.addItem(fmodes[i], i + 1);
     filterModeBox.setSelectedId(1);
-    filterModeAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(p.apvts, "filterMode", filterModeBox);
+    filterModeAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(audioProcessor.apvts, "filterMode", filterModeBox);
     addAndMakeVisible(filterModeBox);
 
     // LFO
     juce::StringArray lfoShapes = {"Sine", "Triangle", "Saw", "Square", "Random", "S&H"};
     for (int i = 0; i < 6; ++i) { lfo1ShapeBox.addItem(lfoShapes[i], i + 1); lfo2ShapeBox.addItem(lfoShapes[i], i + 1); }
     lfo1ShapeBox.setSelectedId(1); lfo2ShapeBox.setSelectedId(1);
-    lfo1ShapeAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(p.apvts, "lfo1Shape", lfo1ShapeBox);
-    lfo2ShapeAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(p.apvts, "lfo2Shape", lfo2ShapeBox);
+    lfo1ShapeAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(audioProcessor.apvts, "lfo1Shape", lfo1ShapeBox);
+    lfo2ShapeAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(audioProcessor.apvts, "lfo2Shape", lfo2ShapeBox);
     addAndMakeVisible(lfo1ShapeBox); addAndMakeVisible(lfo2ShapeBox);
     makeSlider(lfo1Rate, "lfo1Rate", lfo1RateAtt); makeSlider(lfo2Rate, "lfo2Rate", lfo2RateAtt);
     makeSlider(lfo1Depth, "lfo1Depth", lfo1DepthAtt); makeSlider(lfo2Depth, "lfo2Depth", lfo2DepthAtt);
@@ -67,7 +68,7 @@ HUNTERICE_SYNTHAudioProcessorEditor::HUNTERICE_SYNTHAudioProcessorEditor(HUNTERI
     juce::StringArray distModes = {"Hard","Soft","Tube","Diode","Fuzz","Fold","Wave","Asym","Digital","Industrial"};
     for (int i = 0; i < 10; ++i) distModeBox.addItem(distModes[i], i + 1);
     distModeBox.setSelectedId(2);
-    distModeAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(p.apvts, "distMode", distModeBox);
+    distModeAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(audioProcessor.apvts, "distMode", distModeBox);
     addAndMakeVisible(distModeBox);
     makeSlider(distDrive, "distDrive", distDriveAtt); makeSlider(distMix, "distMix", distMixAtt);
     makeSlider(delayTime, "delayTime", delayTimeAtt); makeSlider(delayFb, "delayFb", delayFbAtt);
@@ -81,8 +82,8 @@ HUNTERICE_SYNTHAudioProcessorEditor::HUNTERICE_SYNTHAudioProcessorEditor(HUNTERI
     makeSlider(master, "masterGain", masterAtt);
 
     // Preset
-    for (int i = 0; i < (int)p.presetManager.getPresets().size(); ++i) {
-        presetBox.addItem(p.presetManager.getPresets()[i].name, i + 1);
+    for (int i = 0; i < (int)audioProcessor.presetManager.getPresets().size(); ++i) {
+        presetBox.addItem(audioProcessor.presetManager.getPresets()[i].name, i + 1);
     }
     presetBox.onChange = [this]() {
         int idx = presetBox.getSelectedId() - 1;
@@ -105,12 +106,10 @@ void HUNTERICE_SYNTHAudioProcessorEditor::timerCallback() { repaint(); }
 
 void HUNTERICE_SYNTHAudioProcessorEditor::paint(juce::Graphics& g)
 {
-    // Background gradient
     juce::ColourGradient bg(juce::Colour(0xff15151a), 0, 0, juce::Colour(0xff050507), 0, (float)getHeight(), false);
     g.setGradientFill(bg);
     g.fillAll();
 
-    // Header
     g.setColour(juce::Colour(0xffcc0000));
     g.setFont(juce::Font(36.0f, juce::Font::bold));
     g.drawText("HUNTERICE", 20, 10, 300, 40, juce::Justification::centredLeft);
@@ -118,7 +117,6 @@ void HUNTERICE_SYNTHAudioProcessorEditor::paint(juce::Graphics& g)
     g.setFont(14.0f);
     g.drawText("PROFESSIONAL SYNTHESIZER", 20, 45, 300, 20, juce::Justification::centredLeft);
 
-    // Dividers
     g.setColour(juce::Colour(0xffcc0000));
     g.drawLine(20.0f, 70.0f, (float)getWidth() - 20.0f, 70.0f, 1.5f);
 }
@@ -128,18 +126,14 @@ void HUNTERICE_SYNTHAudioProcessorEditor::resized()
     auto area = getLocalBounds().reduced(15);
     area.removeFromTop(80);
 
-    // Preset bar
     auto presetBar = area.removeFromTop(35);
     presetBox.setBounds(presetBar.removeFromLeft(400).reduced(2));
-
     area.removeFromTop(10);
 
-    // Main grid: 3 columns
     auto col1 = area.removeFromLeft(area.getWidth() / 3).reduced(5);
     auto col2 = area.removeFromLeft(area.getWidth() / 2).reduced(5);
     auto col3 = area.reduced(5);
 
-    // Column 1: OSC + ENV
     auto oscArea = col1.removeFromTop(col1.getHeight() / 2).reduced(5);
     auto envArea = col1.reduced(5);
 
@@ -161,13 +155,13 @@ void HUNTERICE_SYNTHAudioProcessorEditor::resized()
     ampD.setBounds(envRow1.removeFromLeft(ew).reduced(3));
     ampS.setBounds(envRow1.removeFromLeft(ew).reduced(3));
     ampR.setBounds(envRow1.removeFromLeft(ew).reduced(3));
+    
     auto envRow2 = envArea.removeFromTop(110);
     filtA.setBounds(envRow2.removeFromLeft(ew).reduced(3));
     filtD.setBounds(envRow2.removeFromLeft(ew).reduced(3));
     filtS.setBounds(envRow2.removeFromLeft(ew).reduced(3));
     filtR.setBounds(envRow2.removeFromLeft(ew).reduced(3));
 
-    // Column 2: FILTER + LFO + MOD
     auto filtArea = col2.removeFromTop(col2.getHeight() / 3).reduced(5);
     auto lfoArea = col2.removeFromTop(col2.getHeight() / 2).reduced(5);
     auto modArea = col2.reduced(5);
@@ -198,14 +192,13 @@ void HUNTERICE_SYNTHAudioProcessorEditor::resized()
     unisonDetune.setBounds(modRow.removeFromLeft(mw).reduced(3));
     porta.setBounds(modRow.removeFromLeft(mw).reduced(3));
 
-    // Column 3: FX + MASTER
     auto fxArea = col3.removeFromTop(col3.getHeight() * 2 / 3).reduced(5);
     auto masterArea = col3.reduced(5);
 
     auto distRow = fxArea.removeFromTop(30);
     distModeBox.setBounds(distRow.removeFromLeft(150).reduced(2));
     auto distKnobs = fxArea.removeFromTop(110);
-    auto dw = distKnobs.getWidth() / 3;
+    auto dw = distKnobs.getWidth() / 3; // Исправлено: было 2, стало 3 для Drive, Mix и пустого места или можно добавить Output
     distDrive.setBounds(distKnobs.removeFromLeft(dw).reduced(3));
     distMix.setBounds(distKnobs.removeFromLeft(dw).reduced(3));
 
