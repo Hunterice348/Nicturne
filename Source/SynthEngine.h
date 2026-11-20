@@ -1,205 +1,232 @@
 #pragma once
-#include <cmath>
+#include "DSP.h"
 #include <vector>
-#include <array>
-#include <algorithm>
 
-class SynthVoice {
+namespace hunterice {
+
+class Voice {
 public:
-    enum Waveform { Sine = 0, Saw, Square, Triangle, NumWaveforms };
-
-    void prepare(double sampleRate) {
-        fs = sampleRate;
-        phase1 = 0.0;
-        phase2 = 0.0;
-        env = 0.0;
-        filterState[0] = filterState[1] = filterState[2] = 0.0f;
+    void prepare(double sr) {
+        fs = sr;
+        osc1.prepare(sr); osc2.prepare(sr); sub.prepare(sr);
+        ampEnv.prepare(sr); filterEnv.prepare(sr);
+        filter.prepare(sr); lfo1.prepare(sr); lfo2.prepare(sr);
+        portamentoCurrent = 0.0f;
     }
 
     void noteOn(float freq, float vel) {
-        frequency = freq;
+        targetFreq = freq;
+        if (portamentoRate > 0.0f && portamentoCurrent > 0.0f) {
+            // portamento starts from current
+        } else {
+            portamentoCurrent = freq;
+        }
         velocity = vel;
-        phase1 = 0.0;
-        phase2 = 0.0;
-        envStage = Attack;
+        ampEnv.noteOn();
+        filterEnv.noteOn();
         gate = true;
+        active = true;
     }
 
     void noteOff() {
         gate = false;
-        envStage = Release;
+        ampEnv.noteOff();
+        filterEnv.noteOff();
     }
 
-    void setADSR(float a, float d, float s, float r) {
-        attack  = std::max(0.001f, a);
-        decay   = std::max(0.001f, d);
-        sustain = std::clamp(s, 0.0f, 1.0f);
-        release = std::max(0.001f, r);
+    bool isActive() const { return active && ampEnv.isActive(); }
+
+    // Oscillators
+    void setOsc1(int wf, float detune, float pw) { osc1.setWaveform(wf); osc1.setDetune(detune); osc1.setPulseWidth(pw); }
+    void setOsc2(int wf, float detune, float pw, float mix) { osc2.setWaveform(wf); osc2.setDetune(detune); osc2.setPulseWidth(pw); osc2Mix = mix; }
+    void setSub(float mix, int octave) { subMix = mix; subOctave = octave; }
+    void setNoise(float mix) { noiseMix = mix; }
+
+    // Envelopes
+    void setAmpADSR(float a, float d, float s, float r) { ampEnv.setParameters(a, d, s, r); }
+    void setFilterADSR(float a, float d, float s, float r) { filterEnv.setParameters(a, d, s, r); }
+
+    // Filter
+    void setFilter(float cutoff, float reso, int mode, float envAmt) {
+        baseCutoff = cutoff; filterReso = reso; filterMode = mode; filterEnvAmt = envAmt;
     }
 
-    void setOsc1(Waveform wf, float detune) {
-        wave1 = wf;
-        detune1 = detune;
-    }
+    // LFO
+    void setLFO1(int shape, float rate, float depth) { lfo1.setShape(shape); lfo1.setRate(rate); lfo1.setDepth(depth); }
+    void setLFO2(int shape, float rate, float depth) { lfo2.setShape(shape); lfo2.setRate(rate); lfo2.setDepth(depth); }
 
-    void setOsc2(Waveform wf, float detune, float mix) {
-        wave2 = wf;
-        detune2 = detune;
-        osc2Mix = std::clamp(mix, 0.0f, 1.0f);
-    }
+    // Modulation
+    void setPitchMod(float amt) { pitchModAmt = amt; }
+    void setFilterMod(float amt) { filterModAmt = amt; }
 
-    void setFilter(float cutoff, float reso) {
-        filterCutoff = std::clamp(cutoff, 20.0f, 20000.0f);
-        filterReso = std::clamp(reso, 0.5f, 10.0f);
-    }
-
-    bool isActive() const { return env > 0.0001f || gate; }
+    // Unison / Portamento
+    void setUnison(int voices, float detune) { unisonVoices = std::clamp(voices, 1, 8); unisonDetune = detune; }
+    void setPortamento(float time) { portamentoRate = time; }
 
     float render() {
-        // 1. Envelope
-        switch (envStage) {
-            case Attack:
-                env += (1.0f / (attack * fs));
-                if (env >= 1.0f) { env = 1.0f; envStage = Decay; }
-                break;
-            case Decay:
-                env -= ((1.0f - sustain) / (decay * fs));
-                if (env <= sustain) { env = sustain; envStage = SustainStage; }
-                break;
-            case SustainStage:
-                env = sustain;
-                if (!gate) envStage = Release;
-                break;
-            case Release:
-                env -= (env / (release * fs));
-                if (env < 0.0001f) { env = 0.0f; return 0.0f; }
-                break;
+        if (!active) return 0.0f;
+
+        // Portamento
+        if (portamentoRate > 0.0f && std::abs(portamentoCurrent - targetFreq) > 0.01f) {
+            float coef = 1.0f - std::exp(-1.0f / (portamentoRate * fs));
+            portamentoCurrent += (targetFreq - portamentoCurrent) * coef;
+        } else {
+            portamentoCurrent = targetFreq;
         }
 
-        // 2. Oscillator 1
-        double inc1 = (frequency * std::pow(2.0, detune1 / 1200.0)) / fs;
-        phase1 += inc1;
-        if (phase1 >= 1.0) phase1 -= 1.0;
-        float osc1 = renderOscillator(wave1, phase1, inc1);
+        float env = ampEnv.process();
+        float fenv = filterEnv.process();
+        float l1 = lfo1.process();
+        float l2 = lfo2.process();
 
-        // 3. Oscillator 2
-        double inc2 = (frequency * std::pow(2.0, detune2 / 1200.0)) / fs;
-        phase2 += inc2;
-        if (phase2 >= 1.0) phase2 -= 1.0;
-        float osc2 = renderOscillator(wave2, phase2, inc2);
+        // Pitch modulation
+        float pitchMod = 1.0f + l1 * pitchModAmt;
+        float freq = portamentoCurrent * pitchMod;
 
-        // 4. Mix oscillators
-        float mixed = osc1 * (1.0f - osc2Mix) + osc2 * osc2Mix;
+        // Oscillators
+        float sample = 0.0f;
+        float unisonGain = 1.0f / std::sqrt((float)unisonVoices);
+        for (int u = 0; u < unisonVoices; ++u) {
+            float detuneOffset = (unisonVoices > 1) ? (u - (unisonVoices - 1) * 0.5f) * unisonDetune : 0.0f;
+            osc1.setDetune(detuneOffset);
+            osc1.setFrequency(freq);
+            osc2.setDetune(detuneOffset * 0.5f);
+            osc2.setFrequency(freq);
+            sub.setFrequency(freq / (float)(1 << subOctave));
+            sub.setWaveform(Oscillator::Sine);
 
-        // 5. Filter (2-pole SVF)
-        float wc = 2.0f * 3.14159265f * filterCutoff / (float)fs;
-        float g = std::tan(wc * 0.5f);
-        float k = 1.0f / filterReso;
-        float a1 = 1.0f / (1.0f + g * (g + k));
-        float a2 = g * a1;
-        float a3 = g * a2;
+            float s = osc1.render() * (1.0f - osc2Mix) + osc2.render() * osc2Mix;
+            s += sub.render() * subMix;
+            s += ((float)(rand() / (float)RAND_MAX) * 2.0f - 1.0f) * noiseMix;
+            sample += s * unisonGain;
+        }
 
-        float v3 = mixed - filterState[2];
-        float v1 = filterState[0] + a2 * v3;
-        float v2 = filterState[1] + a2 * v1;
-        filterState[0] = v1 + a1 * v3;
-        filterState[1] = v2 + a2 * v1;
-        filterState[2] = v2 + a3 * v1;
+        // Filter modulation
+        float cutoffMod = baseCutoff * std::pow(2.0f, l2 * filterModAmt + fenv * filterEnvAmt);
+        filter.setParameters(cutoffMod, filterReso, filterMode);
+        sample = filter.process(sample);
 
-        return v2 * env * velocity * 0.3f;
+        return sample * env * velocity * 0.3f;
     }
 
 private:
-    float renderOscillator(Waveform wf, double phase, double inc) {
-        float t = (float)phase;
-        switch (wf) {
-            case Sine:
-                return (float)std::sin(2.0 * 3.14159265 * phase);
-            case Saw:
-                return 2.0f * t - 1.0f - polyBlep(t, (float)inc);
-            case Square:
-                return (t < 0.5f ? 1.0f : -1.0f) + 
-                       polyBlep(t, (float)inc) - 
-                       polyBlep(std::fmod(t + 0.5f, 1.0f), (float)inc);
-            case Triangle:
-                return 2.0f * std::abs(2.0f * t - 1.0f) - 1.0f;
-            default:
-                return 0.0f;
-        }
-    }
-
-    float polyBlep(float t, float dt) {
-        if (t < dt) {
-            t /= dt;
-            return t + t - t * t - 1.0f;
-        } else if (t > 1.0f - dt) {
-            t = (t - 1.0f) / dt;
-            return t * t + t + t + 1.0f;
-        }
-        return 0.0f;
-    }
-
-    enum EnvStage { Attack, Decay, SustainStage, Release };
-    EnvStage envStage = Attack;
     double fs = 44100.0;
-    double phase1 = 0.0, phase2 = 0.0;
-    float frequency = 440.0f;
+    Oscillator osc1, osc2, sub;
+    ADSR ampEnv, filterEnv;
+    SVFFilter filter;
+    LFO lfo1, lfo2;
+
+    float targetFreq = 440.0f;
+    float portamentoCurrent = 440.0f;
+    float portamentoRate = 0.0f;
     float velocity = 1.0f;
-    float env = 0.0f;
     bool gate = false;
-    float attack = 0.01f, decay = 0.2f, sustain = 0.7f, release = 0.3f;
-    Waveform wave1 = Saw, wave2 = Square;
-    float detune1 = 0.0f, detune2 = 0.0f;
-    float osc2Mix = 0.5f;
-    float filterCutoff = 5000.0f, filterReso = 1.0f;
-    std::array<float, 3> filterState{0, 0, 0};
+    bool active = false;
+
+    float osc2Mix = 0.0f;
+    float subMix = 0.0f;
+    int subOctave = 1;
+    float noiseMix = 0.0f;
+
+    float baseCutoff = 5000.0f;
+    float filterReso = 1.0f;
+    int filterMode = 0;
+    float filterEnvAmt = 0.0f;
+
+    float pitchModAmt = 0.0f;
+    float filterModAmt = 0.0f;
+
+    int unisonVoices = 1;
+    float unisonDetune = 10.0f;
 };
 
 class SynthEngine {
 public:
-    void prepare(double sampleRate, int maxVoices = 8) {
+    void prepare(double sr, int maxVoices = 16) {
         voices.resize(maxVoices);
-        for (auto& v : voices) v.prepare(sampleRate);
+        for (auto& v : voices) v.prepare(sr);
+        delayL.prepare(sr); delayR.prepare(sr);
+        reverb.prepare(sr);
+        chorusL.prepare(sr); chorusR.prepare(sr);
     }
 
-    void noteOn(int note, float velocity) {
+    void noteOn(int note, float vel) {
         float freq = 440.0f * std::pow(2.0f, (note - 69) / 12.0f);
         for (auto& v : voices) {
-            if (!v.isActive()) {
-                v.noteOn(freq, velocity);
-                return;
-            }
+            if (!v.isActive()) { v.noteOn(freq, vel); return; }
+        }
+        // Steal oldest
+        voices[stealIndex].noteOn(freq, vel);
+        stealIndex = (stealIndex + 1) % voices.size();
+    }
+
+    void noteOff(int) {
+        for (auto& v : voices) v.noteOff();
+    }
+
+    void allNotesOff() { for (auto& v : voices) v.noteOff(); }
+
+    // Apply same params to all voices
+    template<typename F>
+    void applyToAll(F f) { for (auto& v : voices) f(v); }
+
+    // Effects
+    void setDelay(float time, float fb, float mix) { delayTime = time; delayFb = fb; delayMix = mix; }
+    void setReverb(float room, float damp, float mix) { reverbRoom = room; reverbDamp = damp; reverbMix = mix; }
+    void setChorus(float rate, float depth, float mix) { chorusRate = rate; chorusDepth = depth; chorusMix = mix; }
+    void setDistortion(int mode, float drive, float mix) { distMode = mode; distDrive = drive; distMix = mix; }
+    void setMaster(float gain) { masterGain = gain; }
+
+    void process(float* left, float* right, int numSamples) {
+        reverb.setParameters(reverbRoom, reverbDamp, reverbMix);
+
+        for (int i = 0; i < numSamples; ++i) {
+            float s = 0.0f;
+            for (auto& v : voices) s += v.render();
+
+            // Distortion
+            float dry = s;
+            s = distortion.process(s, distDrive);
+            s = dry * (1.0f - distMix) + s * distMix;
+
+            // Chorus (stereo)
+            float cL = chorusL.process(s, chorusRate, chorusDepth, chorusMix);
+            float cR = chorusR.process(s, chorusRate * 1.03f, chorusDepth, chorusMix);
+
+            // Delay (stereo)
+            float dL = delayL.process(cL, delayTime, delayFb, delayMix);
+            float dR = delayR.process(cR, delayTime * 1.02f, delayFb, delayMix);
+
+            // Reverb
+            float rL = dL, rR = dR;
+            reverb.process(rL, rR);
+
+            left[i]  = rL * masterGain;
+            right[i] = rR * masterGain;
         }
     }
 
-    void noteOff(int note) {
-        for (auto& v : voices) {
-            v.noteOff();
-        }
-    }
-
-    void setADSR(float a, float d, float s, float r) {
-        for (auto& v : voices) v.setADSR(a, d, s, r);
-    }
-
-    void setOsc1(int wf, float detune) {
-        for (auto& v : voices) v.setOsc1((SynthVoice::Waveform)wf, detune);
-    }
-
-    void setOsc2(int wf, float detune, float mix) {
-        for (auto& v : voices) v.setOsc2((SynthVoice::Waveform)wf, detune, mix);
-    }
-
-    void setFilter(float cutoff, float reso) {
-        for (auto& v : voices) v.setFilter(cutoff, reso);
-    }
-
-    float render() {
-        float sample = 0.0f;
-        for (auto& v : voices) sample += v.render();
-        return sample;
+    void reset() {
+        delayL.reset(); delayR.reset();
+        reverb.reset();
+        chorusL.reset(); chorusR.reset();
     }
 
 private:
-    std::vector<SynthVoice> voices;
+    std::vector<Voice> voices;
+    int stealIndex = 0;
+
+    Delay delayL, delayR;
+    Reverb reverb;
+    Chorus chorusL, chorusR;
+    Distortion distortion;
+
+    float delayTime = 0.3f, delayFb = 0.4f, delayMix = 0.0f;
+    float reverbRoom = 0.5f, reverbDamp = 0.5f, reverbMix = 0.0f;
+    float chorusRate = 1.0f, chorusDepth = 0.3f, chorusMix = 0.0f;
+    int distMode = 1;
+    float distDrive = 1.0f, distMix = 0.0f;
+    float masterGain = 0.8f;
 };
+
+} // namespace hunterice
