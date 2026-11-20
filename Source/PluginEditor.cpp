@@ -9,7 +9,7 @@ HUNTERICE_SYNTHAudioProcessorEditor::HUNTERICE_SYNTHAudioProcessorEditor(HUNTERI
     setResizeLimits(1200, 800, 1920, 1080);
     setSize(1400, 850);
 
-    // ИСПРАВЛЕНИЕ: используем audioProcessor.apvts вместо p.apvts
+    // ИСПРАВЛЕНО: используем audioProcessor.apvts вместо p.apvts
     auto makeSlider = [this](juce::Slider& s, const juce::String& paramID,
                              std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>& att) {
         s.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
@@ -18,7 +18,6 @@ HUNTERICE_SYNTHAudioProcessorEditor::HUNTERICE_SYNTHAudioProcessorEditor(HUNTERI
         addAndMakeVisible(s);
     };
 
-    // Oscillators
     juce::StringArray waves = {"Sine", "Triangle", "Saw", "Square", "Pulse", "Noise"};
     for (int i = 0; i < 6; ++i) { osc1WaveBox.addItem(waves[i], i + 1); osc2WaveBox.addItem(waves[i], i + 1); }
     osc1WaveBox.setSelectedId(2); osc2WaveBox.setSelectedId(3);
@@ -32,15 +31,11 @@ HUNTERICE_SYNTHAudioProcessorEditor::HUNTERICE_SYNTHAudioProcessorEditor(HUNTERI
     makeSlider(subMix, "subMix", subMixAtt);
     makeSlider(noiseMix, "noiseMix", noiseMixAtt);
 
-    // Amp Envelope
     makeSlider(ampA, "ampAttack", ampAAtt); makeSlider(ampD, "ampDecay", ampDAtt);
     makeSlider(ampS, "ampSustain", ampSAtt); makeSlider(ampR, "ampRelease", ampRAtt);
-
-    // Filter Envelope
     makeSlider(filtA, "filtAttack", filtAAtt); makeSlider(filtD, "filtDecay", filtDAtt);
     makeSlider(filtS, "filtSustain", filtSAtt); makeSlider(filtR, "filtRelease", filtRAtt);
 
-    // Filter
     makeSlider(cutoff, "cutoff", cutoffAtt); makeSlider(reso, "resonance", resoAtt);
     makeSlider(filtEnv, "filterEnvAmt", filtEnvAtt);
     juce::StringArray fmodes = {"LP", "HP", "BP", "Notch"};
@@ -49,7 +44,6 @@ HUNTERICE_SYNTHAudioProcessorEditor::HUNTERICE_SYNTHAudioProcessorEditor(HUNTERI
     filterModeAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(audioProcessor.apvts, "filterMode", filterModeBox);
     addAndMakeVisible(filterModeBox);
 
-    // LFO
     juce::StringArray lfoShapes = {"Sine", "Triangle", "Saw", "Square", "Random", "S&H"};
     for (int i = 0; i < 6; ++i) { lfo1ShapeBox.addItem(lfoShapes[i], i + 1); lfo2ShapeBox.addItem(lfoShapes[i], i + 1); }
     lfo1ShapeBox.setSelectedId(1); lfo2ShapeBox.setSelectedId(1);
@@ -59,12 +53,10 @@ HUNTERICE_SYNTHAudioProcessorEditor::HUNTERICE_SYNTHAudioProcessorEditor(HUNTERI
     makeSlider(lfo1Rate, "lfo1Rate", lfo1RateAtt); makeSlider(lfo2Rate, "lfo2Rate", lfo2RateAtt);
     makeSlider(lfo1Depth, "lfo1Depth", lfo1DepthAtt); makeSlider(lfo2Depth, "lfo2Depth", lfo2DepthAtt);
 
-    // Mod
     makeSlider(pitchMod, "pitchMod", pitchModAtt); makeSlider(filterMod, "filterMod", filterModAtt);
     makeSlider(unison, "unison", unisonAtt); makeSlider(unisonDetune, "unisonDetune", unisonDetuneAtt);
     makeSlider(porta, "portamento", portaAtt);
 
-    // FX
     juce::StringArray distModes = {"Hard","Soft","Tube","Diode","Fuzz","Fold","Wave","Asym","Digital","Industrial"};
     for (int i = 0; i < 10; ++i) distModeBox.addItem(distModes[i], i + 1);
     distModeBox.setSelectedId(2);
@@ -78,10 +70,8 @@ HUNTERICE_SYNTHAudioProcessorEditor::HUNTERICE_SYNTHAudioProcessorEditor(HUNTERI
     makeSlider(chorusRate, "chorusRate", chorusRateAtt); makeSlider(chorusDepth, "chorusDepth", chorusDepthAtt);
     makeSlider(chorusMix, "chorusMix", chorusMixAtt);
 
-    // Master
     makeSlider(master, "masterGain", masterAtt);
 
-    // Preset
     for (int i = 0; i < (int)audioProcessor.presetManager.getPresets().size(); ++i) {
         presetBox.addItem(audioProcessor.presetManager.getPresets()[i].name, i + 1);
     }
@@ -198,7 +188,7 @@ void HUNTERICE_SYNTHAudioProcessorEditor::resized()
     auto distRow = fxArea.removeFromTop(30);
     distModeBox.setBounds(distRow.removeFromLeft(150).reduced(2));
     auto distKnobs = fxArea.removeFromTop(110);
-    auto dw = distKnobs.getWidth() / 3; // Исправлено: было 2, стало 3 для Drive, Mix и пустого места или можно добавить Output
+    auto dw = distKnobs.getWidth() / 2;
     distDrive.setBounds(distKnobs.removeFromLeft(dw).reduced(3));
     distMix.setBounds(distKnobs.removeFromLeft(dw).reduced(3));
 
