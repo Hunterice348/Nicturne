@@ -9,20 +9,16 @@ namespace hunterice {
 constexpr float PI = 3.14159265358979f;
 constexpr float TWO_PI = 6.28318530717959f;
 
-// ============ POLYBLEP антиалиасинг ============
 inline float polyBlep(float t, float dt) {
     if (t < dt) { t /= dt; return t + t - t * t - 1.0f; }
     else if (t > 1.0f - dt) { t = (t - 1.0f) / dt; return t * t + t + t + 1.0f; }
     return 0.0f;
 }
 
-// ============ ОСЦИЛЛЯТОР ============
 class Oscillator {
 public:
     enum Waveform { Sine = 0, Triangle, Saw, Square, Pulse, Noise, NumWaves };
-
     void prepare(double sr) { fs = sr; phase = 0.0; }
-
     void setFrequency(float f) { frequency = std::max(20.0f, std::min(f, 20000.0f)); }
     void setWaveform(int w) { waveform = std::clamp(w, 0, (int)NumWaves - 1); }
     void setPulseWidth(float pw) { pulseWidth = std::clamp(pw, 0.1f, 0.9f); }
@@ -52,7 +48,6 @@ public:
             default:       return 0.0f;
         }
     }
-
     void reset() { phase = 0.0; }
 
 private:
@@ -64,18 +59,15 @@ private:
     int waveform = Saw;
 };
 
-// ============ ADSR ОГИБАЮЩАЯ ============
 class ADSR {
 public:
     void prepare(double sr) { fs = sr; value = 0.0f; }
-
     void setParameters(float a, float d, float s, float r) {
         attack  = std::max(0.001f, a);
         decay   = std::max(0.001f, d);
         sustain = std::clamp(s, 0.0f, 1.0f);
         release = std::max(0.001f, r);
     }
-
     void noteOn()  { stage = Attack; }
     void noteOff() { stage = Release; }
 
@@ -89,20 +81,15 @@ public:
                 value -= (float)((1.0 - sustain) / (decay * fs));
                 if (value <= sustain) { value = sustain; stage = Sustain; }
                 break;
-            case Sustain:
-                value = sustain;
-                break;
+            case Sustain: value = sustain; break;
             case Release:
                 value -= (float)(value / (release * fs));
                 if (value < 0.0001f) { value = 0.0f; stage = Idle; }
                 break;
-            case Idle:
-                value = 0.0f;
-                break;
+            case Idle: value = 0.0f; break;
         }
         return value;
     }
-
     bool isActive() const { return stage != Idle; }
 
 private:
@@ -113,11 +100,9 @@ private:
     float attack = 0.01f, decay = 0.2f, sustain = 0.7f, release = 0.3f;
 };
 
-// ============ LFO ============
 class LFO {
 public:
     enum Shape { Sine = 0, Triangle, Saw, Square, Random, SH, NumShapes };
-
     void prepare(double sr) { fs = sr; phase = 0.0; }
     void setRate(float hz) { rate = std::max(0.01f, std::min(hz, 50.0f)); }
     void setDepth(float d) { depth = std::clamp(d, 0.0f, 1.0f); }
@@ -149,17 +134,16 @@ private:
     float sampleHold = 0.0f;
 };
 
-// ============ ФИЛЬТР SVF (LP/HP/BP/Notch) ============
 class SVFFilter {
 public:
     enum Mode { LP = 0, HP, BP, Notch, NumModes };
-
     void prepare(double sr) { fs = sr; ic1eq = ic2eq = 0.0f; }
 
-    void setParameters(float cutoff, float reso, int mode) {
-        this->cutoff = std::clamp(cutoff, 20.0f, 20000.0f);
-        this->reso = std::clamp(reso, 0.5f, 10.0f);
-        this->mode = std::clamp(mode, 0, (int)NumModes - 1);
+    // ИСПРАВЛЕНО: имена параметров изменены, чтобы не скрывать члены класса
+    void setParameters(float c, float r, int m) {
+        cutoff = std::clamp(c, 20.0f, 20000.0f);
+        reso = std::clamp(r, 0.5f, 10.0f);
+        mode = std::clamp(m, 0, (int)NumModes - 1);
     }
 
     float process(float in) {
@@ -183,7 +167,6 @@ public:
             default:    return in;
         }
     }
-
     void reset() { ic1eq = ic2eq = 0.0f; }
 
 private:
@@ -193,11 +176,9 @@ private:
     int mode = LP;
 };
 
-// ============ DISTORTION (10 режимов) ============
 class Distortion {
 public:
     enum Mode { HardClip=0, SoftClip, Tube, Diode, Fuzz, Foldback, Waveshape, Asym, Digital, Industrial, NumModes };
-
     void setMode(int m) { mode = std::clamp(m, 0, (int)NumModes - 1); }
 
     float process(float in, float drive) {
@@ -223,12 +204,10 @@ public:
             default:         return x;
         }
     }
-
 private:
     int mode = SoftClip;
 };
 
-// ============ DELAY ============
 class Delay {
 public:
     void prepare(double sr, float maxTimeSec = 2.0f) {
@@ -236,7 +215,6 @@ public:
         buffer.assign((size_t)(sr * maxTimeSec), 0.0f);
         writePos = 0;
     }
-
     float process(float in, float timeSec, float feedback, float mix) {
         int delaySamples = std::max(1, (int)(timeSec * fs));
         if (delaySamples >= (int)buffer.size()) delaySamples = (int)buffer.size() - 1;
@@ -248,16 +226,13 @@ public:
         if (writePos >= (int)buffer.size()) writePos = 0;
         return in * (1.0f - mix) + delayed * mix;
     }
-
     void reset() { std::fill(buffer.begin(), buffer.end(), 0.0f); }
-
 private:
     double fs = 44100.0;
     std::vector<float> buffer;
     int writePos = 0;
 };
 
-// ============ REVERB (Freeverb-подобный) ============
 class Reverb {
 public:
     void prepare(double sr) {
@@ -268,8 +243,9 @@ public:
         for (auto& a : allpassR) a.prepare(sr);
     }
 
-    void setParameters(float roomSize, float damping, float mix) {
-        this->mix = std::clamp(mix, 0.0f, 1.0f);
+    // ИСПРАВЛЕНО: имя параметра mix изменено на m, чтобы не скрывать член класса
+    void setParameters(float roomSize, float damping, float m) {
+        mix = std::clamp(m, 0.0f, 1.0f);
         float rs = std::clamp(roomSize, 0.0f, 1.0f);
         float d  = std::clamp(damping, 0.0f, 1.0f);
         static const int combTuningsL[] = {1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617};
@@ -293,7 +269,6 @@ public:
         left  = left  * (1.0f - mix) + outL * mix * 0.4f;
         right = right * (1.0f - mix) + outR * mix * 0.4f;
     }
-
     void reset() {
         for (auto& c : combL) c.reset();
         for (auto& c : combR) c.reset();
@@ -307,7 +282,6 @@ private:
         int index = 0;
         float last = 0;
         float feedback = 0.8f, damp = 0.5f;
-
         void prepare(double sr) { buffer.assign((size_t)(sr * 0.05), 0.0f); }
         void setParams(int size, float fb, float d) {
             if ((int)buffer.size() != size) buffer.assign(size, 0.0f);
@@ -322,12 +296,10 @@ private:
         }
         void reset() { std::fill(buffer.begin(), buffer.end(), 0.0f); last = 0; }
     };
-
     struct Allpass {
         std::vector<float> buffer;
         int index = 0;
         float feedback = 0.5f;
-
         void prepare(double sr) { buffer.assign((size_t)(sr * 0.01), 0.0f); }
         void setParams(int size, float fb) {
             if ((int)buffer.size() != size) buffer.assign(size, 0.0f);
@@ -342,14 +314,12 @@ private:
         }
         void reset() { std::fill(buffer.begin(), buffer.end(), 0.0f); }
     };
-
     double fs = 44100.0;
     std::array<Comb, 8> combL, combR;
     std::array<Allpass, 4> allpassL, allpassR;
     float mix = 0.3f;
 };
 
-// ============ CHORUS ============
 class Chorus {
 public:
     void prepare(double sr) {
@@ -358,7 +328,6 @@ public:
         writePos = 0;
         phase = 0.0;
     }
-
     float process(float in, float rate, float depth, float mix) {
         buffer[writePos] = in;
         phase += rate / fs;
@@ -375,9 +344,7 @@ public:
         writePos = (writePos + 1) % (int)buffer.size();
         return in * (1.0f - mix) + delayed * mix;
     }
-
     void reset() { std::fill(buffer.begin(), buffer.end(), 0.0f); }
-
 private:
     double fs = 44100.0;
     std::vector<float> buffer;
