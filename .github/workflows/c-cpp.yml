@@ -3,6 +3,8 @@ name: HUNTERICE VST3 Build
 on:
   push:
     branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
   workflow_dispatch:
 
 env:
@@ -11,15 +13,56 @@ env:
 
 jobs:
   build-windows:
+    name: Build VST3 (Windows x64)
     runs-on: windows-latest
+    
     steps:
-    - uses: actions/checkout@v4
-    - name: Configure
-      run: cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
-    - name: Build
-      run: cmake --build build --config ${{env.BUILD_TYPE}} --target ${{env.PROJECT_NAME}}_VST3 --parallel
-    - name: Upload
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Setup MSVC Developer Environment
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: x64
+    
+    - name: Configure CMake (Ninja)
+      run: |
+        cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+    
+    - name: Build VST3 Plugin
+      run: |
+        cmake --build build --config ${{env.BUILD_TYPE}} --target ${{env.PROJECT_NAME}}_VST3 --parallel
+    
+    - name: Verify VST3 file exists
+      shell: pwsh
+      run: |
+        Write-Host "=== Searching for VST3 file ==="
+        Get-ChildItem -Path build -Recurse -Filter "*.vst3" | ForEach-Object {
+          Write-Host "Found: $($_.FullName)"
+        }
+        $vst3Path = "build/${{env.PROJECT_NAME}}_artefacts/${{env.BUILD_TYPE}}/VST3"
+        if (-not (Test-Path $vst3Path)) {
+          Write-Error "VST3 output folder not found at $vst3Path!"
+          exit 1
+        }
+    
+    - name: Upload VST3 Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: HUNTERICE-SYNTH-VST3
-        path: build/HUNTERICE_SYNTH_artefacts/${{env.BUILD_TYPE}}/VST3/
+        name: HUNTERICE-SYNTH-VST3-Windows
+        path: build/${{env.PROJECT_NAME}}_artefacts/${{env.BUILD_TYPE}}/VST3/
+        retention-days: 30
+        if-no-files-found: error
+
+  build-summary:
+    name: Build Summary
+    runs-on: ubuntu-latest
+    needs: build-windows
+    steps:
+    - name: Show status
+      run: |
+        echo "✅ Windows VST3 build completed!"
+        echo "📦 Download from: Actions → this run → Artifacts"
+        echo "📁 Install to: C:\Program Files\Common Files\VST3\"
